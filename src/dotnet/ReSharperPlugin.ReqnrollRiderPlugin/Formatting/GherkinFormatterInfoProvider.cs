@@ -4,7 +4,6 @@ using JetBrains.Application.Threading;
 using JetBrains.Lifetimes;
 using JetBrains.ProjectModel;
 using JetBrains.ReSharper.Psi;
-using JetBrains.ReSharper.Psi.CodeStyle;
 using JetBrains.ReSharper.Psi.ExtensionsAPI.Tree;
 using JetBrains.ReSharper.Psi.Format;
 using JetBrains.ReSharper.Psi.Impl.CodeStyle;
@@ -16,7 +15,7 @@ namespace ReSharperPlugin.ReqnrollRiderPlugin.Formatting;
 public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalculatedSettingsSchema calculatedSettingsSchema, IThreading threading, Lifetime lifetime)
     : FormatterInfoProviderWithFluentApi<CodeFormattingContext, GherkinFormatSettingsKey>(settingsSchema, calculatedSettingsSchema, threading, lifetime)
 {
-    private static readonly NodeTypeSet Comments = new NodeTypeSet(GherkinNodeTypes.COMMENT);
+    private static readonly NodeTypeSet Comments = new(GherkinNodeTypes.COMMENT);
 
     protected override void Initialize()
     {
@@ -36,7 +35,7 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Where(
                 Parent().HasType(GherkinNodeTypes.FEATURE),
                 Node().HasType(GherkinNodeTypes.SCENARIO).Or().HasType(GherkinNodeTypes.SCENARIO_OUTLINE).Or().HasType(GherkinNodeTypes.RULE).OptionallyPreceededBy(Comments))
-            .Switch(s => s.ScenarioIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentFeatureChildren, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
@@ -44,7 +43,7 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Where(
                 Parent().HasType(GherkinNodeTypes.RULE),
                 Node().HasType(GherkinNodeTypes.SCENARIO).Or().HasType(GherkinNodeTypes.SCENARIO_OUTLINE).OptionallyPreceededBy(Comments))
-            .Switch(s => s.ScenarioIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentRuleChildren, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
@@ -52,7 +51,7 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Where(
                 Parent().HasType(GherkinNodeTypes.SCENARIO).Or().HasType(GherkinNodeTypes.SCENARIO_OUTLINE),
                 Node().HasType(GherkinNodeTypes.STEP).OptionallyPreceededBy(Comments))
-            .Switch(s => s.StepIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentSteps, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
@@ -61,7 +60,7 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
                 Left().HasType(GherkinNodeTypes.STEP).Satisfies2((node, _) => node.Node is GherkinStep {StepKind: GherkinStepKind.And})
                     .OptionallyPreceededBy(Comments)
             )
-            .Switch(s => s.AndStepIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentAndSteps, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
@@ -69,7 +68,7 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Where(
                 Parent().HasType(GherkinNodeTypes.STEP),
                 Node().HasType(GherkinNodeTypes.PYSTRING))
-            .Switch(s => s.PyStringIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentDocString, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
@@ -77,17 +76,23 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Where(
                 Parent().HasType(GherkinNodeTypes.SCENARIO_OUTLINE),
                 Node().HasType(GherkinNodeTypes.EXAMPLES_BLOCK).OptionallyPreceededBy(Comments))
-            .Switch(s => s.ExampleIndentSize, ContinuousIndentOptions(this, IndentType.External))
+            .Switch(s => s.IndentExamples, IndentIfTrue(this))
             .Build();
 
         Describe<IndentingRule>()
-            .Name("TableIndent")
+            .Name("DataTableIndent")
             .Where(
-                Parent().HasType(GherkinNodeTypes.EXAMPLES_BLOCK).Or().HasType(GherkinNodeTypes.STEP),
+                Parent().HasType(GherkinNodeTypes.STEP),
                 Node().HasType(GherkinNodeTypes.TABLE))
-            .Switch(s => s.SmallTableIndent,
-                When(true).Calculate((_, _) => new IndentOptionValue(IndentType.External, 0, new Whitespace(0, 2))),
-                When(false).Switch(s => s.TableIndentSize, ContinuousIndentOptions(this, IndentType.External)))
+            .Switch(s => s.IndentDataTable, IndentIfTrue(this))
+            .Build();
+
+        Describe<IndentingRule>()
+            .Name("ExamplesTableIndent")
+            .Where(
+                Parent().HasType(GherkinNodeTypes.EXAMPLES_BLOCK),
+                Node().HasType(GherkinNodeTypes.TABLE))
+            .Switch(s => s.IndentExamplesTable, IndentIfTrue(this))
             .Build();
     }
 
@@ -120,7 +125,6 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .SwitchBlankLines(s => s.BlankLinesBeforeExamples, true, BlankLineLimitKind.LimitBothStrict)
             .Build();
 
-
         Describe<FormattingRule>()
             .Name("WrapTagOnDifferentLines")
             .Where(
@@ -133,26 +137,15 @@ public class GherkinFormatterInfoProvider(ISettingsSchema settingsSchema, ICalcu
             .Build();
     }
 
-    public static IBuildableBuilder<OptionTreeBlank>[] ContinuousIndentOptions<TContext, TSettingsKey>(
-        FormatterInfoProviderWithFluentApi<TContext, TSettingsKey> provider,
-        IndentType indentType = IndentType.AfterFirstToken)
+    private static IBuildableBuilder<OptionTreeBlank>[] IndentIfTrue<TContext, TSettingsKey>(
+        FormatterInfoProviderWithFluentApi<TContext, TSettingsKey> provider)
         where TContext : CodeFormattingContext
         where TSettingsKey : FormatSettingsKeyBase
     {
         return
         [
-            provider.When(ContinuousLineIndent.None).Return(indentType, 0),
-            provider.When(ContinuousLineIndent.Single).Return(indentType, 1),
-            provider.When(ContinuousLineIndent.Double).Return(indentType, 2),
-            provider.When(0).Return(indentType, 0),
-            provider.When(1).Return(indentType, 1),
-            provider.When(2).Return(indentType, 2),
-            provider.When(3).Return(indentType, 3),
-            provider.When(4).Return(indentType, 4),
-            provider.When(5).Return(indentType, 5),
-            provider.When(6).Return(indentType, 6),
-            provider.When(7).Return(indentType, 7),
+            provider.When(true).Return(IndentType.External, indent: 1),
+            provider.When(false).Return(IndentType.External, indent: 0),
         ];
     }
-
 }

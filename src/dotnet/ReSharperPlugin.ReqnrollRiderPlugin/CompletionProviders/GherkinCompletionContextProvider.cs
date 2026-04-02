@@ -65,14 +65,16 @@ public class GherkinCompletionContextProvider : CodeCompletionContextProviderBas
                 relatedText = "@";
                 ranges = new TextLookupRanges(
                     new DocumentRange(tag.GetDocumentEndOffset().Shift(1), context.CaretDocumentOffset),
-                    new DocumentRange(tag.GetDocumentEndOffset().Shift(1), context.CaretDocumentOffset)
+                    new DocumentRange(tag.GetDocumentEndOffset().Shift(1), context.CaretDocumentOffset),
+                    isGreedyToLeft: true
                 );
             }
             else
             {
                 ranges = new TextLookupRanges(
                     new DocumentRange(tag.GetDocumentStartOffset(), context.CaretDocumentOffset),
-                    tag.GetDocumentRange()
+                    tag.GetDocumentRange(),
+                    isGreedyToLeft: true
                 );
             }
 
@@ -99,7 +101,7 @@ public class GherkinCompletionContextProvider : CodeCompletionContextProviderBas
             var replaceRange = stepTextRange;
             var insertRange = stepTextRange.SetEndTo(context.SelectedRange.EndOffset);
 
-            ranges = new TextLookupRanges(insertRange, replaceRange);
+            ranges = new TextLookupRanges(insertRange, replaceRange, isGreedyToLeft: true);
         }
         return new GherkinSpecificCodeCompletionContext(context, ranges, interestingNode, isStartOfLine ? startOfLineText : relatedText, isStartOfLine);
     }
@@ -152,25 +154,28 @@ public class GherkinCompletionContextProvider : CodeCompletionContextProviderBas
     {
         if (nodeUnderCursor.NodeType == GherkinTokenTypes.NEW_LINE)
             return false;
-        if (nodeUnderCursor.IsWhitespaceToken()
-            || nodeUnderCursor is GherkinToken token && (token.NodeType == GherkinTokenTypes.TEXT || token.NodeType == GherkinTokenTypes.COLON))
-        {
-            for (var t = nodeUnderCursor.PrevSibling; t != null; t = t.PrevSibling)
-            {
-                if (t.GetTokenType() == GherkinTokenTypes.NEW_LINE)
-                    break;
-                if (t.GetTokenType() == GherkinTokenTypes.FEATURE_KEYWORD)
-                    return true;
-                if (t.GetTokenType() == GherkinTokenTypes.SCENARIO_KEYWORD)
-                    return true;
-                if (t.GetTokenType() == GherkinTokenTypes.SCENARIO_OUTLINE_KEYWORD)
-                    return true;
-                if (t.GetTokenType() == GherkinTokenTypes.BACKGROUND_KEYWORD)
-                    return true;
-                if (t.GetTokenType() == GherkinTokenTypes.PIPE || t.GetTokenType() == GherkinTokenTypes.TABLE_CELL)
-                    return true;
-            }
+
+        // If it's not whitespace, and it's not text nor a colon, then we can skip
+        if (!nodeUnderCursor.IsWhitespaceToken() &&
+            !(nodeUnderCursor is GherkinToken token &&
+              (token.NodeType == GherkinTokenTypes.TEXT ||
+               token.NodeType == GherkinTokenTypes.COLON)))
             return false;
+
+        for (var t = nodeUnderCursor.PrevSibling; t != null; t = t.PrevSibling)
+        {
+            if (t.GetTokenType() == GherkinTokenTypes.NEW_LINE)
+                break;
+            if (t.GetTokenType() == GherkinTokenTypes.FEATURE_KEYWORD)
+                return true;
+            if (t.GetTokenType() == GherkinTokenTypes.SCENARIO_KEYWORD)
+                return true;
+            if (t.GetTokenType() == GherkinTokenTypes.SCENARIO_OUTLINE_KEYWORD)
+                return true;
+            if (t.GetTokenType() == GherkinTokenTypes.BACKGROUND_KEYWORD)
+                return true;
+            if (t.GetTokenType() == GherkinTokenTypes.PIPE || t.GetTokenType() == GherkinTokenTypes.TABLE_CELL)
+                return true;
         }
         return false;
     }

@@ -64,27 +64,25 @@ public class GherkinTypingAssist : TypingAssistLanguageBase<GherkinLanguage>, IT
                 if (lastKeywordToken == null)
                     return false;
 
-                var extraIdentSize = 0;
+                var extraIndentSize = 0;
                 var extraIdent = "";
 
                 if (lastKeywordToken == GherkinTokenTypes.FEATURE_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).ScenarioIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentFeatureChildren ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.RULE_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).ScenarioIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentRuleChildren ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.EXAMPLE_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).TableIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentExamples ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.BACKGROUND_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).StepIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentSteps ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.SCENARIO_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).StepIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentSteps ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.SCENARIO_OUTLINE_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).StepIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentSteps ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.EXAMPLES_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).TableIndentSize;
-                else if (lastKeywordToken == GherkinTokenTypes.EXAMPLES_KEYWORD)
-                    extraIdentSize = GetFormatSettingsKey(textControl).StepIndentSize;
+                    extraIndentSize = GetFormatSettingsKey(textControl).IndentExamples ? 1 : 0;
                 else if (lastKeywordToken == GherkinTokenTypes.STEP_KEYWORD)
-                    extraIdentSize = 0;
+                    extraIndentSize = 0;
 
                 if (inTable)
                 {
@@ -94,7 +92,7 @@ public class GherkinTypingAssist : TypingAssistLanguageBase<GherkinLanguage>, IT
                     return true;
                 }
 
-                var currentIndent = ComputeIndentOfCurrentKeyword(cachingLexer) + GetIndentText(textControl, extraIdentSize) + extraIdent;
+                var currentIndent = ComputeIndentOfCurrentKeyword(cachingLexer) + GetIndentText(textControl, extraIndentSize) + extraIdent;
                 textControl.Document.InsertText(caret, GetNewLineText(textControl) + currentIndent);
                 return true;
             }
@@ -154,7 +152,7 @@ public class GherkinTypingAssist : TypingAssistLanguageBase<GherkinLanguage>, IT
             case IndentStyle.Space:
                 var configIndentSize = GetIndentSize(textControl);
                 for (var i = 0; i < indentSize; i++)
-                for (int j = 0; j < configIndentSize; j++)
+                for (var j = 0; j < configIndentSize; j++)
                     sb.Append(" ");
                 break;
             default:
